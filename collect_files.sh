@@ -1,3 +1,10 @@
+usage() {
+    echo "Usage: $0 [--max_depth DEPTH] INPUT_DIR OUTPUT_DIR"
+    echo "Copies all files from INPUT_DIR (including subdirectories) to OUTPUT_DIR"
+    echo "  --max_depth DEPTH  maximum depth of directory traversal (optional)"
+    exit 1
+}
+
 max_depth=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -29,12 +36,14 @@ if [[ ! -d "$input_dir" ]]; then
     exit 1
 fi
 
+mkdir -p "$output_dir"
+
 get_unique_filename() {
     local original_path="$1"
     local filename=$(basename "$original_path")
     local extension="${filename##*.}"
     local name="${filename%.*}"
-
+    
     local counter=1
     local new_filename="$filename"
     while [[ -e "$output_dir/$new_filename" ]]; do
@@ -56,7 +65,7 @@ copy_files() {
     if [[ -n "$max_depth" && "$current_depth" -gt "$max_depth" ]]; then
         return
     fi
-
+    
     for item in "$current_dir"/*; do
         if [[ -f "$item" ]]; then
             local unique_name=$(get_unique_filename "$item")
