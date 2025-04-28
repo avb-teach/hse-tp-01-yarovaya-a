@@ -1,82 +1,103 @@
-usage() {
-    echo "Usage: $0 [--max_depth DEPTH] INPUT_DIR OUTPUT_DIR"
-    echo "Copies all files from INPUT_DIR (including subdirectories) to OUTPUT_DIR"
-    echo "  --max_depth DEPTH  maximum depth of directory traversal (optional)"
+#!/bin/bash
+
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+    echo "Usage: $0 <input_dir> <output_dir> [--max_depth <depth>]"
     exit 1
-}
-
-max_depth=""
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --max_depth)
-            max_depth="$2"
-            shift 2
-            ;;
-        *)
-            if [[ -z "$input_dir" ]]; then
-                input_dir="$1"
-            elif [[ -z "$output_dir" ]]; then
-                output_dir="$1"
-            else
-                echo "Error: Too many arguments"
-                usage
-            fi
-            shift
-            ;;
-    esac
-done
-
-if [[ -z "$input_dir" || -z "$output_dir" ]]; then
-    echo "Error: Missing required arguments"
-    usage
 fi
 
-if [[ ! -d "$input_dir" ]]; then
-    echo "Error: Input directory does not exist: $input_dir"
+input_dir="$1"
+output_dir="$2"
+max_depth=""
+handle_duplicates=true
+
+if [ "$#" -eq 3 ] && [ "$3" == "--max_depth" ]; then
+    echo "Error: --max_depth requires a depth value"
+    exit 1
+fi
+
+if [ "$#" -eq 4 ] && [ "$3" == "--max_depth" ]; then
+    max_depth="$4"
+    if ! [[ "$max_depth" =~ ^[0-9]+$ ]]; then
+        echo "Error: max_depth must be a positive integer"
+        exit 1
+    fi
+    handle_duplicates=false
+fi
+
+if [ ! -d "$input_dir" ]; then
+    echo "Error: Input directory does not exist"
     exit 1
 fi
 
 mkdir -p "$output_dir"
 
-get_unique_filename() {
-    local original_path="$1"
-    local filename=$(basename "$original_path")
-    local extension="${filename##*.}"
-    local name="${filename%.*}"
-    
-    local counter=1
-    local new_filename="$filename"
-    while [[ -e "$output_dir/$new_filename" ]]; do
-        if [[ "$name" == "$extension" ]]; then
-            new_filename="${name}${counter}"
-        else
-            new_filename="${name}${counter}.${extension}"
-        fi
-        ((counter++))
-    done
-    
-    echo "$new_filename"
-}
-
 copy_files() {
-    local current_dir="$1"
-    local current_depth="$2"
+    local src="$1"
+    local dest="$2"
+    local current_depth="$3"
+    local max_d="$4"
 
-    if [[ -n "$max_depth" && "$current_depth" -gt "$max_depth" ]]; then
+    if [ -n "$max_d" ] && [ "$current_depth" -gt "$max_d" ]; then
         return
     fi
-    
-    for item in "$current_dir"/*; do
-        if [[ -f "$item" ]]; then
-            local unique_name=$(get_unique_filename "$item")
-            cp "$item" "$output_dir/$unique_name"
-            echo "Copied: $item -> $output_dir/$unique_name"
-        elif [[ -d "$item" ]]; then
-            copy_files "$item" $((current_depth + 1))
+
+    for item in "$src"/*; do
+        if [ -f "$item" ]; then
+            filename=$(basename "$item")
+            
+            if [ "$handle_duplicates" = true ]; then
+                base="${filename%.*}"
+                ext="${filename##*.}"
+                if [ "$ext" = "$filename" ]; then
+                    ext=""
+                else
+                    ext=".$ext"
+                fi
+                
+                counter=1
+                new_filename="$filename"
+                while [ -e "$dest/$new_filename" ]; do
+                    new_filename="${base}${counter}${ext}"
+                    counter=$((counter + 1))
+                done
+                
+                cp "$item" "$dest/$new_filename"
+            else
+                cp "$item" "$dest/"
+            fi
+            
+        elif [ -d "$item" ]; then
+            copy_files "$item" "$dest" $((current_depth + 1)) "$max_d"
         fi
     done
 }
 
-copy_files "$input_dir" 1
+copy_with_depth() {
+    local src="$1"
+    local dest="$2"
+    local current_depth=1
+    local max_d="$3"
 
-echo "All files have been copied to $output_dir"
+    for item in "$src"/*; do
+        if [ -f "$item" ]; then
+            filename=$(basename "$item")
+            cp "$item" "$dest/"
+        elif [ -d "$item" ]; then
+            if [ -z "$max_d" ] || [ "$current_depth" -le "$max_d" ]; then
+                dirname=$(basename "$item")
+                mkdir -p "$dest/$dirname"
+                copy_with_depth "$item" "$dest/$dirname" $((current_depth + 1)) "$max_d"
+            else
+                find "$item" -type f -exec cp {} "$dest/" \;
+            fi
+        fi
+    done
+}
+
+if [ -n "$max_depth" ]; then
+    copy_with_depth "$input_dir" "$output_dir" 1 "$max_depth"
+else
+    copy_files "$input_dir" "$output_dir" 1 ""
+fi
+
+echo "Files collected successfully to $output_dir"
