@@ -1,42 +1,29 @@
 #!/bin/bash
 
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+    echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir" >&2
+    exit 1
+fi
+
 max_depth=-1
 input_dir=""
 output_dir=""
 
-positional=()
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --max_depth)
-            if [[ $2 =~ ^[0-9]+$ ]]; then
-                max_depth=$2
-                shift 2
-            else
-                echo "Error: --max_depth requires a positive integer" >&2
-                exit 1
-            fi
-            ;;
-        --*)
-            echo "Error: Unknown option $1" >&2
-            exit 1
-            ;;
-        *)
-            positional+=("$1")
-            shift
-            ;;
-    esac
-done
-
-if [[ ${#positional[@]} -ne 2 ]]; then
-    echo "Usage: $0 [--max_depth N] INPUT_DIR OUTPUT_DIR" >&2
-    exit 1
+if [ "$1" == "--max_depth" ]; then
+    if [ "$#" -ne 4 ]; then
+        echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir" >&2
+        exit 1
+    fi
+    max_depth=$2
+    input_dir=$3
+    output_dir=$4
+else
+    input_dir=$1
+    output_dir=$2
 fi
 
-input_dir="${positional[0]}"
-output_dir="${positional[1]}"
-
-if [[ ! -d "$input_dir" ]]; then
-    echo "Error: Input directory does not exist" >&2
+if [ ! -d "$input_dir" ]; then
+    echo "Error: Input directory does not exist: $input_dir" >&2
     exit 1
 fi
 
@@ -45,38 +32,32 @@ mkdir -p "$output_dir"
 copy_files() {
     local src="$1"
     local dest="$2"
-    local depth="$3"
-    local prefix="$4"
+    local current_depth="$3"
 
-    if [[ -f "$src" ]]; then
-        local filename="${prefix}$(basename "$src")"
-        local counter=1
-        local new_filename="$filename"
-        
-        while [[ -e "$dest/$new_filename" ]]; do
-            new_filename="${filename%.*}_$counter.${filename##*.}"
-            ((counter++))
-        done
-        
-        cp "$src" "$dest/$new_filename"
-    elif [[ -d "$src" ]]; then
-        if [[ $max_depth -ne -1 && $depth -ge $max_depth ]]; then
-            return
-        fi
-        
-        for item in "$src"/*; do
-            if [[ -e "$item" ]]; then
-                local new_prefix="${prefix}$(basename "$src")_"
-                copy_files "$item" "$dest" $((depth + 1)) "$new_prefix"
-            fi
-        done
+    if [ "$max_depth" -ne -1 ] && [ "$current_depth" -gt "$max_depth" ]; then
+        return
     fi
+
+    for item in "$src"/*; do
+        if [ -f "$item" ]; then
+            filename=$(basename "$item")
+            extension="${filename##*.}"
+            basename="${filename%.*}"
+
+            counter=1
+            new_filename="$filename"
+            while [ -f "$dest/$new_filename" ]; do
+                new_filename="${basename}_${counter}.${extension}"
+                counter=$((counter + 1))
+            done
+
+            cp "$item" "$dest/$new_filename"
+        elif [ -d "$item" ]; then
+            copy_files "$item" "$dest" $((current_depth + 1))
+        fi
+    done
 }
 
-for item in "$input_dir"/*; do
-    if [[ -e "$item" ]]; then
-        copy_files "$item" "$output_dir" 1 ""
-    fi
-done
+copy_files "$input_dir" "$output_dir" 1
 
-echo "Files copied successfully to $output_dir"
+echo "Files copied successfully from $input_dir to $output_dir"
