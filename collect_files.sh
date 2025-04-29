@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
     echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir"
     exit 1
@@ -32,36 +31,43 @@ if [ ! -d "$output_dir" ]; then
     mkdir -p "$output_dir"
 fi
 
-copy_files() {
+process_item() {
     local src=$1
     local dest=$2
     local current_depth=$3
     local max_d=$4
 
-    if [ "$max_d" -ne -1 ] && [ "$current_depth" -gt "$max_d" ]; then
-        return
-    fi
+    if [ -f "$src" ]; then
+        filename=$(basename "$src")
+        extension="${filename##*.}"
+        basename="${filename%.*}"
 
-    for item in "$src"/*; do
-        if [ -f "$item" ]; then
-            filename=$(basename "$item")
-            extension="${filename##*.}"
-            basename="${filename%.*}"
+        counter=1
+        new_filename="$filename"
+        while [ -f "$dest/$new_filename" ]; do
+            new_filename="${basename}${counter}.${extension}"
+            counter=$((counter + 1))
+        done
 
-            counter=1
-            new_filename="$filename"
-            while [ -f "$dest/$new_filename" ]; do
-                new_filename="${basename}${counter}.${extension}"
-                counter=$((counter + 1))
-            done
-
-            cp "$item" "$dest/$new_filename"
-        elif [ -d "$item" ]; then
-            copy_files "$item" "$dest" $((current_depth + 1)) "$max_d"
+        cp "$src" "$dest/$new_filename"
+    elif [ -d "$src" ]; then
+        if [ "$max_d" -ne -1 ] && [ "$current_depth" -gt "$max_d" ]; then
+            mkdir -p "$dest/$(basename "$src")"
+            return
         fi
-    done
+
+        for item in "$src"/*; do
+            if [ -e "$item" ]; then
+                process_item "$item" "$dest" $((current_depth + 1)) "$max_d"
+            fi
+        done
+    fi
 }
 
-copy_files "$input_dir" "$output_dir" 1 "$max_depth"
+for item in "$input_dir"/*; do
+    if [ -e "$item" ]; then
+        process_item "$item" "$output_dir" 1 "$max_depth"
+    fi
+done
 
 echo "Files copied successfully from $input_dir to $output_dir"
