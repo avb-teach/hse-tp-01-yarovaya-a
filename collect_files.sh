@@ -1,98 +1,70 @@
 #!/bin/bash
 
-# Функция для вывода справки
-usage() {
-    echo "Usage: $0 [--max_depth DEPTH] INPUT_DIR OUTPUT_DIR"
-    echo "Copies all files from INPUT_DIR (including subdirectories) to OUTPUT_DIR"
-    echo "  --max_depth DEPTH  maximum depth of directory traversal (optional)"
-    exit 1
-}
-
-# Парсинг аргументов
-max_depth=""
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --max_depth)
-            max_depth="$2"
-            shift 2
-            ;;
-        *)
-            if [[ -z "$input_dir" ]]; then
-                input_dir="$1"
-            elif [[ -z "$output_dir" ]]; then
-                output_dir="$1"
-            else
-                echo "Error: Too many arguments"
-                usage
-            fi
-            shift
-            ;;
-    esac
-done
-
-# Проверка обязательных аргументов
-if [[ -z "$input_dir" || -z "$output_dir" ]]; then
-    echo "Error: Missing required arguments"
-    usage
-fi
-
-# Проверка существования входной директории
-if [[ ! -d "$input_dir" ]]; then
-    echo "Error: Input directory does not exist: $input_dir"
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 /path/to/input_dir /path/to/output_dir [--max_depth N]"
     exit 1
 fi
 
-# Создание выходной директории, если её нет
-mkdir -p "$output_dir"
+INPUT_DIR=$1
+OUTPUT_DIR=$2
+MAX_DEPTH=""
 
-# Функция для обработки конфликтов имен файлов
-get_unique_filename() {
-    local original_path="$1"
-    local filename=$(basename "$original_path")
-    local extension="${filename##*.}"
-    local name="${filename%.*}"
-    
-    # Если файл уже существует, добавляем суффикс
-    local counter=1
-    local new_filename="$filename"
-    while [[ -e "$output_dir/$new_filename" ]]; do
-        # Для файлов без расширения
-        if [[ "$name" == "$extension" ]]; then
-            new_filename="${name}${counter}"
-        else
-            new_filename="${name}${counter}.${extension}"
-        fi
-        ((counter++))
-    done
-    
-    echo "$new_filename"
-}
-
-# Функция для копирования файлов
-copy_files() {
-    local current_dir="$1"
-    local current_depth="$2"
-    
-    # Проверка максимальной глубины
-    if [[ -n "$max_depth" && "$current_depth" -gt "$max_depth" ]]; then
-        return
+if [ "$3" == "--max_depth" ]; then
+    if [ -z "$4" ]; then
+        echo "Error: --max_depth requires a numeric value"
+        exit 1
     fi
-    
-    # Обход содержимого директории
-    for item in "$current_dir"/*; do
-        if [[ -f "$item" ]]; then
-            # Копируем файл с уникальным именем
-            local unique_name=$(get_unique_filename "$item")
-            cp "$item" "$output_dir/$unique_name"
-            echo "Copied: $item -> $output_dir/$unique_name"
-        elif [[ -d "$item" ]]; then
-            # Рекурсивный обход поддиректорий
-            copy_files "$item" $((current_depth + 1))
-        fi
-    done
-}
+    MAX_DEPTH=$4
+fi
 
-# Начинаем обход с глубины 1
-copy_files "$input_dir" 1
+if [ ! -d "$INPUT_DIR" ]; then
+    echo "Error: Input directory does not exist"
+    exit 1
+fi
 
-echo "All files have been copied to $output_dir"
+mkdir -p "$OUTPUT_DIR"
+
+python3 - <<END
+import os
+import shutil
+import sys
+
+input_dir = "$INPUT_DIR"
+output_dir = "$OUTPUT_DIR"
+max_depth = "$MAX_DEPTH"
+
+def depth(path, base):
+    rel_path = os.path.relpath(path, base)
+    if rel_path == '.':
+        return 0
+    return rel_path.count(os.sep) + 1
+
+name_counter = {}
+
+for root, dirs, files in os.walk(input_dir):
+    current_depth = depth(root, input_dir)
+
+    if max_depth and current_depth > int(max_depth):
+        dirs[:] = []
+        continue
+
+    for file in files:
+        src_file = os.path.join(root, file)
+
+        if not max_depth:
+            base_name, ext = os.path.splitext(file)
+            new_file = file
+
+            counter = 1
+            while os.path.exists(os.path.join(output_dir, new_file)):
+                new_file = f"{base_name}{counter}{ext}"
+                counter += 1
+
+            shutil.copy2(src_file, os.path.join(output_dir, new_file))
+        else:
+            rel_path = os.path.relpath(root, input_dir)
+            target_dir = os.path.join(output_dir, rel_path)
+            os.makedirs(target_dir, exist_ok=True)
+            shutil.copy2(src_file, os.path.join(target_dir, file))
+
+END
