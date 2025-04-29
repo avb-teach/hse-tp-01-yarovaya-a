@@ -1,5 +1,14 @@
 #!/bin/bash
 
+if ! command -v uv &> /dev/null; then
+    echo "uv not found — installing..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
+uv venv .venv
+source .venv/bin/activate
+
 if [ "$#" -lt 2 ]; then
     echo "Usage: $0 /path/to/input_dir /path/to/output_dir [--max_depth N]"
     exit 1
