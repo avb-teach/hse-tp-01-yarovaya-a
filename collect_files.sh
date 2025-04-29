@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
     echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir"
     exit 1
@@ -53,7 +54,7 @@ copy_files() {
                 new_filename="${basename}${counter}.${extension}"
                 counter=$((counter + 1))
             done
-            
+
             cp "$item" "$dest/$new_filename"
         elif [ -d "$item" ]; then
             copy_files "$item" "$dest" $((current_depth + 1)) "$max_d"
