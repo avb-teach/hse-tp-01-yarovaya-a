@@ -1,25 +1,37 @@
 #!/bin/bash
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
-    echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir"
-    exit 1
-fi
-
 max_depth=-1
 input_dir=""
 output_dir=""
 
-if [ "$1" == "--max_depth" ]; then
-    if [ "$#" -ne 4 ]; then
-        echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir"
-        exit 1
-    fi
-    max_depth=$2
-    input_dir=$3
-    output_dir=$4
-else
-    input_dir=$1
-    output_dir=$2
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --max_depth)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+                max_depth="$2"
+                shift 2
+            else
+                echo "Error: --max_depth requires a numeric argument"
+                exit 1
+            fi
+            ;;
+        *)
+            if [[ -z "$input_dir" ]]; then
+                input_dir="$1"
+            elif [[ -z "$output_dir" ]]; then
+                output_dir="$1"
+            else
+                echo "Error: Too many arguments"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$input_dir" || -z "$output_dir" ]]; then
+    echo "Usage: $0 [--max_depth N] /path/to/input_dir /path/to/output_dir"
+    exit 1
 fi
 
 if [ ! -d "$input_dir" ]; then
@@ -27,15 +39,12 @@ if [ ! -d "$input_dir" ]; then
     exit 1
 fi
 
-if [ ! -d "$output_dir" ]; then
-    mkdir -p "$output_dir"
-fi
+mkdir -p "$output_dir"
 
 process_item() {
     local src=$1
     local dest=$2
     local current_depth=$3
-    local max_d=$4
 
     if [ -f "$src" ]; then
         filename=$(basename "$src")
@@ -51,14 +60,13 @@ process_item() {
 
         cp "$src" "$dest/$new_filename"
     elif [ -d "$src" ]; then
-        if [ "$max_d" -ne -1 ] && [ "$current_depth" -gt "$max_d" ]; then
-            mkdir -p "$dest/$(basename "$src")"
+        if [ "$max_depth" -ne -1 ] && [ "$current_depth" -ge "$max_depth" ]; then
             return
         fi
 
         for item in "$src"/*; do
             if [ -e "$item" ]; then
-                process_item "$item" "$dest" $((current_depth + 1)) "$max_d"
+                process_item "$item" "$dest" $((current_depth + 1))
             fi
         done
     fi
@@ -66,7 +74,7 @@ process_item() {
 
 for item in "$input_dir"/*; do
     if [ -e "$item" ]; then
-        process_item "$item" "$output_dir" 1 "$max_depth"
+        process_item "$item" "$output_dir" 1
     fi
 done
 
